@@ -1,0 +1,270 @@
+本框架是一个 ORM （Object Relationship Mapping，即对象关系映射）。旨在让开发者更加高效的使用、管理和维护 SQL 来操作数据库。
+# 1 原始 JDBC 的使用方式
+```java
+package com.d.jdbc01;
+
+import com.d.User;
+
+import java.sql.*;
+import java.time.LocalDateTime;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * @description:
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-05-19 22:19:51
+ * @modify:
+ */
+
+public class JDBC01 {
+
+    public static void main(String[] args) throws ClassNotFoundException, SQLException {
+        // 加载驱动
+        String driver = "com.mysql.cj.jdbc.Driver";
+        Class.forName(driver);
+
+        // 连接数据库需要的信息
+        String jdbcUrl = "jdbc:mysql://localhost:1103/dmybatis";
+        String jdbcUsername = "root";
+        String jdbcPassword = "123456";
+
+        // 打开一个连接
+        Connection connection = DriverManager.getConnection(jdbcUrl, jdbcUsername, jdbcPassword);
+
+        insertOne(connection);
+        selectAll(connection);
+
+    }
+
+    private static void insertOne(Connection connection) throws SQLException {
+        // 新建一个对象
+        User newUser = new User(
+                UUID.randomUUID().toString().replace("-", ""),
+                UUID.randomUUID().toString().replace("-", ""),
+                UUID.randomUUID().toString().replace("-", ""),
+                LocalDateTime.now(),
+                LocalDateTime.now(),
+                0
+        );
+
+        try {
+            // 写 SQL
+            String sql =
+                    "INSERT INTO dmybatis.user (id, username, password, create_date_time, update_date_time, deleted)"
+                    + "VALUES (?, ?, ?, ?, ?, ?);";
+
+            // 获取 SQL 预处理之后的语句
+            PreparedStatement statement = connection.prepareStatement(sql);
+
+            // 给 ? 赋值
+            statement.setString(1, newUser.getId());
+            statement.setString(2, newUser.getUsername());
+            statement.setString(3, newUser.getPassword());
+            statement.setObject(4, newUser.getCreateDateTime());
+            statement.setObject(5, newUser.getUpdateDateTime());
+            statement.setInt(6, newUser.getDeleted());
+
+            // 执行更新操作
+            int row = statement.executeUpdate();
+            System.out.println(row);
+            connection.commit();
+        } catch (SQLException e) {
+            try {
+                connection.rollback();
+            } catch (SQLException ex) {
+                // ignore
+            }
+        } finally {
+            try {
+                connection.close();
+            } catch (SQLException e) {
+                // ignore
+            }
+        }
+    }
+
+    private static void selectAll(Connection connection) throws SQLException {
+        // 写 SQL
+        String sql = "SELECT id, username, password, create_date_time, update_date_time, deleted "
+                     + "FROM dmybatis.user";
+        // 预处理 SQL 语句
+        PreparedStatement statement = connection.prepareStatement(sql);
+
+        // 执行查询
+        ResultSet resultSet = statement.executeQuery();
+
+        // 对返回结果进行封装
+        List<User> userList = new LinkedList<>();
+        while (resultSet.next()) {
+            String id = resultSet.getString("id");
+            String username = resultSet.getString("username");
+            String password = resultSet.getString("password");
+            LocalDateTime createDateTime = resultSet.getObject("create_date_time", LocalDateTime.class);
+            LocalDateTime updateDateTime = resultSet.getObject("update_date_time", LocalDateTime.class);
+            int deleted = resultSet.getInt("deleted");
+
+            userList.add(new User(
+                    id,
+                    username,
+                    password,
+                    createDateTime,
+                    updateDateTime,
+                    deleted
+            ));
+
+        }
+
+        // 打印
+        System.out.println(userList);
+    }
+
+}
+
+```
+## 1.1 流程分析
+![](https://cdn.nlark.com/yuque/0/2023/jpeg/34254608/1685501764198-5e501071-b3b6-4d6b-ad63-323abf664add.jpeg)
+在每一次与数据库交互的过程中，只有 数据库连接信息、SQL、SQL 所需的参数、返回值类型 是在变动的，这些就需要交给用户进行配置后使用。
+
+- 数据库连接信息
+   - 只使用一次，用于初始化，所以一般使用配置文件进行配置。
+- SQL 所需参数 和 SQL 执行后的返回值类型 这两者能让你们联想到什么？参数、返回值，有没有联想到一个方法签名，那么是不是可以让用户定义一个方法，该方法的参数需要传入 SQL 中的 ? 占位符，该方法的返回值需要从 ResultSet 结果集来进行封装。
+- SQL 呢？
+   - 我们的 SQL 也可以和上面那个方法进行绑定，只要用户调用上面那个方法，我们就拿到方法对应的 SQL 语句，然后把参数注入到 SQL 中，然后执行 SQL 并封装返回值。
+
+那么总结一下这些在变动的属性如何存储：
+
+- 数据库连接信息
+   - 配置文件，例如：
+      - xml: `<property name="username" value="root"/>`
+      - properties: `username=root`
+      - .......
+- SQL 所需参数和 SQL 执行后的返回值类型
+   - 一个方法，且不需要方法体
+      - `List<User> selectAll();`
+      - `User selectById(int id);`
+- SQL
+   - 配置文件，例如：
+      - xml：`<sql id="selectAll">SELECT * FROM table_name;</sql>`
+      - properties: `selectAll=SELECT * FROM table_name;`
+      - ......
+## 1.2 如何将 SQL 和 操作数据库的方法 进行绑定？
+经过 1.1 的分析，我们已经能够使用户对 SQL 执行流程中需要变化的地方进行自定义了。而且，我们是在用户调用了和 SQL 绑定的 方法 时获取并执行对应的 SQL。这一步要怎么实现呢？**我们不可能知道用户在什么接口中定义了什么方法，也就是说，我们无法在编译时就得知用户定义的方法的信息，也就是说，我们需要在运行时获取用户定义的方法的信息。**
+还没想到？还没想到？还没想到？在运行时获取类和方法的信息，**反射**啊**。**用户只需要告诉我们：定义了什么接口，该接口的方法都是用于操作数据库的，而且在配置文件中完成了接口方法和 SQL 的一一对应的配置关系。我们就能通过该接口的类对象，获取该接口的所有方法，进而将方法和 SQL 进行绑定。
+## 1.3 如何使用户调用 操作数据库的方法 时，由我们（框架）代替？
+有前文可知，用户只需要调用 操作数据的方法 即可利用框架完成对数据库的操作。而框架要做的事就是在用户调用这个操作数据库的方法的时候，执行对应的 SQL，那么怎么做到这一步呢？
+正常手段来说，我们可以写一个类去继承用户定义的接口，然后实现其方法，在其方法中执行对应的 SQL。但问题是：用户定义的接口不是编译时可知的，同样也需要在运行时动态获取，这里应该就不需要提示了，没错，和上文一样，通过 **反射 ** 在运行时动态的创建一个代理类去实现用户定义的接口。这样就能使用户调用接口方法时跳转到我们定义的方法里了。其实这是 JDK 的动态代理，说这么多，可能不大懂，上代码吧。
+[JDK 的动态代理之源码解析](https://laputa.yuque.com/ze41wg/guil3k/yosnwykv1r4vs2xe?view=doc_embed)
+# 2 DMyBatis框架的使用方式
+理清了框架需要干的活和用户需要干的活之后，就可以重新梳理一下流程了。
+用户端的代码将简化为下面这种形式：
+```xml
+<config>
+  <!-- 数据库连接信息 -->
+  <connection>
+    <url>
+      jdbc:mysql:localhost:3306/xxx_db
+    </url>
+    <driver>
+      com.mysql.cj.jdbc.Driver
+    </driver>
+    <username>
+      root
+    </username>
+    <password>
+      123456
+    </password>
+  </connection>
+
+  <!-- dao 数据访问层的 SQL 配置 -->
+  <daos>
+    <!-- UserDao 的 SQL 配置，id 为 UserDao 的全类名 -->
+    <dao id="com.xxx.UserDao">
+			<!-- UserDao 中的 selectAll 方法所绑定的 SQL 语句 -->
+      <select id="selectAll">
+        SELECT * FROM user;
+      </select>
+    </dao>
+  </daos>
+</config>
+```
+```java
+interface UserDao {
+    List<User> selectAll();
+}
+public class Main {
+    public static void main(String[] args) {
+        // 构造配置对象
+        Configuration config = ConfigurationBuilder.build("dmybatis-config.xml");
+        // 构造会话工厂
+        SqlSessionFactory factory = new SqlSessionFactory(config);
+        // 开启会话
+        SqlSession session = factory.openSession();
+        // 获取 Dao 代理类
+		UserDao userDao = session.getDao(UserDao.class);
+        // 查询数据库
+        List<User> userList = userDao.selectAll();
+        // 打印结果
+        System.out.println(userList);
+        // 提交事务
+        session.commit();
+
+        // 如果失败，则在 catch 语句中进行回滚
+        // session.rollback();
+    }
+}
+```
+上述代码可以结合以下时序图：
+![image](https://github.com/Lx0815/dmybatis05/assets/89496228/857b5b54-3597-4552-8935-147e4f188ce3)
+那么框架需要干什么呢？
+
+1. 解析配置文件
+2. 创建会话工厂
+3. 通过会话工厂开启会话并开启事务
+4. 通过会话对象创建 Dao 接口的代理对象
+5. 封装 SQL 参数
+6. 执行 SQL
+7. 封装SQL 执行后返回的结果集
+8. 提交事务
+9. 回滚事务（可能）
+
+那么我们就定义五个类，一个类干一件事情。
+
+1. 解析配置文件
+   1. `ConfigurationBuilder` 构造 `Configuration` 对象
+   2. `Configuration` 对象包含 `ConnectionInfo` 对象和 `DaoInfo` 对象，分别对应配置文件中的 `connection` 标签和 `daos` 标签
+2. 提供会话工厂
+   1. `SqlSessionFactory`：其构造方法接受一个 `Configuration` 对象，用于创建会话对象（开启事务）
+   2. `SqlSession`：其构造方法接受一个 `Configuration` 对象，通过 `Configuration` 对象开启事务（会话）、提交事务等操作。
+3. 创建 Dao 接口的代理对象
+   1. 此步骤通过 `SqlSession` 对象完成
+4. 封装 SQL 参数
+   1. `SqlBuilder`：解析 EL 表达式
+5. 执行 SQL
+   1. `SqlExecutor`：将 SQL 提交到数据库执行
+6. 封装 SQL 执行后返回的结果集
+   1. `ResultSetBuilder`：将返回结果根据 SQL 语句的类型进行封装
+7. 提交事务/回滚事务
+   1. 通过 `SqlSession` 对象完成
+# 3 详细设计
+## 3.1 解析配置文件
+### 3.1.1 依赖引入
+配置文件这边选用了 XML 格式，所以解析配置文件将使用如下依赖：
+```xml
+<dependency>
+    <groupId>org.dom4j</groupId>
+    <artifactId>dom4j</artifactId>
+    <version>2.1.4</version>
+</dependency>
+<dependency>
+    <groupId>jaxen</groupId>
+    <artifactId>jaxen</artifactId>
+    <version>2.0.0</version>
+</dependency>
+```
+### 3.1.2 类设计
+再次回顾一下 XML 配置的内容：[DMybatis的核心配置文件示例](https://laputa.yuque.com/ze41wg/guil3k/bzr70mvo1hnhqtoh?inner=htHi3)
+我们使用一个 Configuration 类来存储 config 标签下的内容，使用 ConnectionInfo 类来存储 connection 标签下的内容，使用 DaoInfo 类来存储 daos 标签下的内容。类之间的关系也和 XML 中关系一样，ConnectionInfo 类和 DaoInfo 类将作为 Configuration 类的属性。
+下面是代码：
