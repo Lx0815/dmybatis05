@@ -20,6 +20,14 @@ public class Configuration {
      */
     private DaoInfo daoInfo;
 
+    public Configuration() {
+    }
+
+    public Configuration(ConnectionInfo connectionInfo, DaoInfo daoInfo) {
+        this.connectionInfo = connectionInfo;
+        this.daoInfo = daoInfo;
+    }
+
     public ConnectionInfo getConnectionInfo() {
         return connectionInfo;
     }

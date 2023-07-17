@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<config>
+    <!-- 数据库连接信息 -->
+    <connection>
+        <url>
+            jdbc:mysql:localhost:3306/xxx_db
+        </url>
+        <driver>
+            com.mysql.cj.jdbc.Driver
+        </driver>
+        <username>
+            root
+        </username>
+        <password>
+            123456
+        </password>
+    </connection>
+
+    <!-- dao 数据访问层的 SQL 配置 -->
+    <daos>
+        <!-- UserDao 的 SQL 配置，id 为 UserDao 的全类名 -->
+        <dao id="com.xxx.UserDao">
+            <!-- UserDao 中的 selectAll 方法所绑定的 SQL 语句 -->
+            <select id="selectAll">
+                SELECT * FROM user;
+            </select>
+        </dao>
+    </daos>
+</config>

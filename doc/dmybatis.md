@@ -268,3 +268,318 @@ public class Main {
 再次回顾一下 XML 配置的内容：[DMybatis的核心配置文件示例](https://laputa.yuque.com/ze41wg/guil3k/bzr70mvo1hnhqtoh?inner=htHi3)
 我们使用一个 Configuration 类来存储 config 标签下的内容，使用 ConnectionInfo 类来存储 connection 标签下的内容，使用 DaoInfo 类来存储 daos 标签下的内容。类之间的关系也和 XML 中关系一样，ConnectionInfo 类和 DaoInfo 类将作为 Configuration 类的属性。
 下面是代码：
+
+
+```java
+// Configuration.java
+package com.d.dmybatis05.config;
+
+/**
+ * @description: 配置对象
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-16 21:26:17
+ * @modify:
+ */
+
+public class Configuration {
+
+    /**
+     * 数据库连接信息
+     */
+    private ConnectionInfo connectionInfo;
+
+    /**
+     * Dao 信息
+     */
+    private DaoInfo daoInfo;
+
+    public Configuration() {
+    }
+
+    public Configuration(ConnectionInfo connectionInfo, DaoInfo daoInfo) {
+        this.connectionInfo = connectionInfo;
+        this.daoInfo = daoInfo;
+    }
+
+    public ConnectionInfo getConnectionInfo() {
+        return connectionInfo;
+    }
+
+    public void setConnectionInfo(ConnectionInfo connectionInfo) {
+        this.connectionInfo = connectionInfo;
+    }
+
+    public DaoInfo getDaoInfo() {
+        return daoInfo;
+    }
+
+    public void setDaoInfo(DaoInfo daoInfo) {
+        this.daoInfo = daoInfo;
+    }
+}
+
+```
+```java
+// ConnectionInfo.java
+package com.d.dmybatis05.config;
+
+/**
+ * @description: 数据库连接信息
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-16 21:27:00
+ * @modify:
+ */
+
+public class ConnectionInfo {
+
+    /**
+     * 驱动程序全类名
+     */
+    private String driverClassName;
+
+    /**
+     * 数据库连接 url
+     */
+    private String url;
+
+    /**
+     * 用户名
+     */
+    private String username;
+
+    /**
+     * 密码
+     */
+    private String password;
+
+    public String getDriverClassName() {
+        return driverClassName;
+    }
+
+    public void setDriverClassName(String driverClassName) {
+        this.driverClassName = driverClassName;
+    }
+
+    public String getUrl() {
+        return url;
+    }
+
+    public void setUrl(String url) {
+        this.url = url;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+}
+
+```
+```java
+// DaoInfo.java
+package com.d.dmybatis05.config;
+
+import java.util.Collections;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * @description: Dao 信息
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-16 21:27:50
+ * @modify:
+ */
+
+public class DaoInfo {
+
+    /**
+     * 存储 SQl 语句，格式为：{@code <sqlId, sql>} , {@code sqlId} 的格式为：XxxDao的全类名.方法名。
+     * <p>notice：该 Map 不可修改</p>
+     */
+    private final Map<String, String> sqlMap;
+
+    /**
+     *
+     * @param sqlMap 格式为：{@code <sqlId, sql>} 的 Map
+     */
+    public DaoInfo(Map<String, String> sqlMap) {
+        this.sqlMap = Collections.unmodifiableMap(sqlMap);
+    }
+
+    /**
+     * 获取 SQL
+     * @param sqlId sqlId，格式为：XxxDao的全类名.方法名
+     * @return 返回获取到的 SQL 语句，可能为 null
+     */
+    public String getSql(String sqlId) {
+        Objects.requireNonNull(sqlId, "sqlId is null");
+        return sqlMap.get(sqlId);
+    }
+
+}
+
+```
+```java
+// ConfigurationBuilder.java
+package com.d.dmybatis05.config;
+
+import org.dom4j.Document;
+import org.dom4j.DocumentException;
+import org.dom4j.Element;
+import org.dom4j.Node;
+import org.dom4j.io.SAXReader;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * @description: 配置类构造器
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-16 22:32:28
+ * @modify:
+ */
+
+public class ConfigurationBuilder {
+
+    private ConfigurationBuilder() throws IllegalAccessException {
+        throw new IllegalAccessException();
+    }
+    
+    private static Document document;
+
+    public static Configuration build(String resource) {
+        SAXReader reader = new SAXReader();
+        try {
+            document = reader.read(ConfigurationBuilder.class.getClassLoader()
+                    .getResourceAsStream(resource));
+        } catch (DocumentException e) {
+            throw new RuntimeException(e);
+        }
+
+        // 解析 connection 标签
+        ConnectionInfo connectionInfo = parseConnection();
+        DaoInfo daoInfo = parseDaos();
+        return new Configuration(connectionInfo, daoInfo);
+
+    }
+
+    private static DaoInfo parseDaos() {
+        List<Node> daoNodeList = document.selectNodes("/config/daos/dao");
+        Map<String, String> sqlMap = new HashMap<>();
+        for (Node node : daoNodeList) {
+            Element daoEle = (Element) node;
+            String classPath = daoEle.attributeValue("id");
+
+            List<Element> elementList = daoEle.elements();
+            for (Element element : elementList) {
+                String sqlId = element.attributeValue("id");
+                String sql = element.getTextTrim();
+                sqlMap.put(classPath + "." + sqlId, sql);
+            }
+        }
+        return new DaoInfo(sqlMap);
+    }
+
+    private static ConnectionInfo parseConnection() {
+        ConnectionInfo connectionInfo = new ConnectionInfo();
+
+        Element urlEle = (Element) document.selectSingleNode("/config/connection/url");
+        connectionInfo.setUrl(urlEle.getTextTrim());
+
+        Element driverEle = (Element) document.selectSingleNode("/config/connection/driver");
+        connectionInfo.setDriverClassName(driverEle.getTextTrim());
+
+        Element usernameEle = (Element) document.selectSingleNode("/config/connection/username");
+        connectionInfo.setUsername(usernameEle.getTextTrim());
+
+        Element passwordEle = (Element) document.selectSingleNode("/config/connection/password");
+        connectionInfo.setPassword(passwordEle.getTextTrim());
+
+        return connectionInfo;
+    }
+}
+
+```
+
+### 3.1.3 测试
+然后在 test 包下建 ConfigurationBuilderTest 类进行测试。
+记得引入 junit 测试包，这里选用 junit4 的
+```xml
+<dependency>
+   <groupId>junit</groupId>
+   <artifactId>junit</artifactId>
+   <version>4.13.2</version>
+</dependency>
+```
+
+```java
+package com.d.dmybatis05.config;
+
+import org.junit.Test;
+
+import java.lang.reflect.Field;
+
+/**
+ * @description: ConfigurationBuilder 的测试类
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-17 23:04:00
+ * @modify:
+ */
+
+public class ConfigurationBuilderTest {
+
+    @Test
+    public void testBuilder() throws NoSuchFieldException, IllegalAccessException {
+        Configuration configuration = ConfigurationBuilder.build("dmybatis-config.xml");
+        ConnectionInfo connectionInfo = configuration.getConnectionInfo();
+        DaoInfo daoInfo = configuration.getDaoInfo();
+        System.out.println(connectionInfo.getUrl());
+        System.out.println(connectionInfo.getDriverClassName());
+        System.out.println(connectionInfo.getUsername());
+        System.out.println(connectionInfo.getPassword());
+
+        Field sqlMapField = DaoInfo.class.getDeclaredField("sqlMap");
+        sqlMapField.setAccessible(true);
+        Object sqlMap = sqlMapField.get(daoInfo);
+        System.out.println(sqlMap.toString());
+
+        /*
+            jdbc:mysql:localhost:3306/xxx_db
+            com.mysql.cj.jdbc.Driver
+            root
+            123456
+            {com.xxx.UserDao.selectAll=SELECT * FROM user;}
+         */
+    }
+
+}
+
+```
+
+运行结果如下：
+```text
+jdbc:mysql:localhost:3306/xxx_db
+com.mysql.cj.jdbc.Driver
+root
+123456
+{com.xxx.UserDao.selectAll=SELECT * FROM user;}
+```
+
+可知测试成功，我们现在已经能够获取到配置文件了！
