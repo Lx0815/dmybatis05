@@ -217,11 +217,11 @@ public class Main {
 }
 ```
 上述代码可以结合以下时序图：
-![image](https://github.com/Lx0815/dmybatis05/assets/89496228/857b5b54-3597-4552-8935-147e4f188ce3)
+![时序图](https://raw.githubusercontent.com/Lx0815/blog_image_repository/main/images/202307212318251.png)
 那么框架需要干什么呢？
 
 1. 解析配置文件
-2. 创建会话工厂
+2. 创建会话工厂，即数据库连接工厂
 3. 通过会话工厂开启会话并开启事务
 4. 通过会话对象创建 Dao 接口的代理对象
 5. 封装 SQL 参数
@@ -583,3 +583,87 @@ root
 ```
 
 可知测试成功，我们现在已经能够获取到配置文件了！
+
+## 3.2 连接数据库 & 开启会话
+
+读取到用户配置的数据库文件后，就可以开始连接数据库了！一个会话其实就对应着一个连接，那么一个 `SqlSession` 对象里一定包含一个 `Connection`  对象。那我们暂且把会话理解成连接，那么由谁来创建数据库连接呢？这里可以用到工厂模式，我们专门写一个工厂类 `SqlSessionFactory` ，使其专门创建和数据库的连接对象，至于连接之后干什么？执行什么SQL都和他无关，这就是单一职责原则，每个类只干好自己的事，别人的事情管不着，也不需要管。
+
+那么下面就开始代码实现：
+
+```java
+package com.d.dmybatis05.session;
+
+import com.d.dmybatis05.config.Configuration;
+import com.d.dmybatis05.config.ConnectionInfo;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+
+/**
+ * @description: SqlSessionFactory 的工厂类
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-21 23:30:15
+ * @modify:
+ */
+
+public class SqlSessionFactory {
+
+    private Configuration configuration;
+
+    public SqlSessionFactory(Configuration configuration) {
+        this.configuration = configuration;
+        // 注册数据库驱动
+        try {
+            Class.forName(configuration.getConnectionInfo().getDriverClassName());
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException("数据库驱动注册失败", e);
+        }
+    }
+
+    public SqlSession openSession() {
+        return new SqlSession(newConnection());
+    }
+
+    private Connection newConnection() {
+        try {
+            ConnectionInfo connectionInfo = configuration.getConnectionInfo();
+            return DriverManager.getConnection(connectionInfo.getUrl(), connectionInfo.getUsername(), connectionInfo.getPassword());
+        } catch (SQLException e) {
+            throw new RuntimeException("创建数据库连接失败", e);
+        }
+    }
+}
+
+```
+
+```java
+package com.d.dmybatis05.session;
+
+import java.sql.Connection;
+
+/**
+ * @description: 会话对象
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-21 23:29:37
+ * @modify:
+ */
+
+public class SqlSession {
+
+    private Connection connection;
+
+    public SqlSession(Connection connection) {
+        this.connection = connection;
+    }
+
+}
+
+```
+
+
+
+
+
