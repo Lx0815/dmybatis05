@@ -217,7 +217,7 @@ public class Main {
 }
 ```
 上述代码可以结合以下时序图：
-![image](https://github.com/Lx0815/dmybatis05/assets/89496228/857b5b54-3597-4552-8935-147e4f188ce3)
+![](https://github.com/Lx0815/dmybatis05/assets/89496228/857b5b54-3597-4552-8935-147e4f188ce3)
 那么框架需要干什么呢？
 
 1. 解析配置文件
