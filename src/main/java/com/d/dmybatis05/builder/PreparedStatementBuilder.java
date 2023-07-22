@@ -1,6 +1,8 @@
 package com.d.dmybatis05.builder;
 
 import com.d.dmybatis05.annotation.Param;
+import com.d.dmybatis05.util.StringUtil;
+import sun.swing.StringUIClientPropertyKey;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationTargetException;
@@ -69,7 +71,7 @@ public class PreparedStatementBuilder {
                     Class<?> type = parameter.getType();
                     for (Method pojoMethod : type.getMethods()) {
                         if (pojoMethod.getName().startsWith("get") && ! "getClass".equals(pojoMethod.getName())) {
-                            String propertyName = resolvePropertyName(pojoMethod);
+                            String propertyName = StringUtil.resolvePropertyName(pojoMethod);
                             paramMap.put(propertyName, pojoMethod.invoke(args[i]));
                         }
                     }
@@ -79,13 +81,6 @@ public class PreparedStatementBuilder {
             }
         }
         return paramMap;
-    }
-
-    private String resolvePropertyName(Method pojoMethod) {
-        String propertyName = pojoMethod.getName().substring(3);
-        char[] charArray = propertyName.toCharArray();
-        charArray[0] += 32;
-        return new String(charArray);
     }
 
     private String[] resolveSqlParam(String originalSql) {

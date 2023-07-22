@@ -1721,3 +1721,313 @@ paramMap:
 可知，数据已经插入到数据库了，那么查询一下数据库看看是不是？
 
 ![image](https://raw.githubusercontent.com/Lx0815/blog_image_repository/main/images/202307222154527.png)
+
+## 3.5 解析 SQL 执行的返回值
+
+我们一般使用的返回值是 ResultSet，那么现在我们要做的就是，通过反射，从 ResultSet 中获取数据并将转换为对应的返回值。
+
+那么就需要一个 ResultSetParser 来解析 ResultSet，下面定义这个类：
+
+```java
+package com.d.dmybatis05.result;
+
+import org.junit.Test;
+
+import java.lang.reflect.Method;
+import java.sql.ResultSet;
+
+/**
+ * @description: ResultSet 解析器
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-22 21:58:01
+ * @modify:
+ */
+
+public class ResultSetParser<T> {
+
+    private ResultSet resultSet;
+
+    private Class<T> returnType;
+
+    public ResultSetParser(ResultSet resultSet, Class<T> returnType) {
+        this.resultSet = resultSet;
+        this.returnType = returnType;
+    }
+
+    public T parse() {
+        return null;
+    }
+}
+
+```
+
+定义完 parse 方法后，又发现了问题，我们无法知道确切的返回值类型是什么。例如，如果返回值是 `List<User>` ，那么我们只能获取到 List.class ，而 List 中包含的具体的数据类型是什么我们无法获取。相信你们也不希望用户调用完查询接口之后，返回一个 `List<Object> ` ，然后让用户自己手动强转吧，这样也很容易导致类型转换异常。那么怎么解决呢？学过 MyBatis 的小伙伴肯定知道，MyBatis 的 XML 配置有一个属性是 returnType 的，里面指定的是返回数据的类型。注意了，这里指的不一定是方法返回值的类型，而是返回的数据中，某一行所对应的数据类型，即 List 的泛型。
+
+那么又要开始改代码了，，，
+
+1. 在 SqlInfo 中添加一个 Class 类型的属性叫 rowType
+2. 修改 ConfigurationBuilder 类的 parseDaos 方法如下：
+
+```java
+private static DaoInfo parseDaos() {
+        try {
+
+            List<Node> daoNodeList = document.selectNodes("/config/daos/dao");
+            Map<String, SqlInfo> sqlMap = new HashMap<>();
+            for (Node node : daoNodeList) {
+                Element daoEle = (Element) node;
+                String classPath = daoEle.attributeValue("id");
+
+                List<Element> elementList = daoEle.elements();
+                for (Element element : elementList) {
+                    String sqlId = element.attributeValue("id");
+                    String sql = element.getTextTrim();
+                    SqlInfo.SqlType sqlType = SqlInfo.SqlType.of(element.getName());
+                    String rowTypeStr = element.attributeValue("rowType");
+                    Class<?> rowType = Class.forName(rowTypeStr);
+                    sqlMap.put(classPath + "." + sqlId, new SqlInfo(sql, sqlType, rowType));
+                }
+            }
+            return new DaoInfo(sqlMap);
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+    }
+```
+
+ok。如此一来，我们就可以获取到行的数据类型了。
+
+下面就开始编写返回值的封装。
+
+代码实现：
+
+```java
+public T parse() {
+        try {
+            while (resultSet.next()) {
+
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+```
+
+代码写到这，又卡住了。我们怎么把列名和实体类的属性名一一对应呢？现在有两种方法：
+
+1. 按照之前将方法参数名和SQL占位符对应的方法，即创建一个注解指定
+2. 通过规范约束，即直接将驼峰命名转换为下划线命名。
+
+很明显第一种方式的可扩展性更强，因为如果用户的表名包含前缀或者不规范呢？（其实就是懒得写，第二种方式像一种算法，第一种像面向对象编程）
+
+我们就选择用第一种方式进行实现吧，我们定义一个注解 @TableField，如下：
+
+```java
+package com.d.dmybatis05.annotation;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+/**
+ * @description:
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-22 22:30:38
+ * @modify:
+ */
+
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.FIELD)
+public @interface TableField {
+
+    String value();
+
+}
+
+```
+
+这个 value() 的返回值即为数据库的列名称，或者说查询语句返回的列名称
+
+然后就可以继续编写解析器了，代码实现如下：
+
+```java
+package com.d.dmybatis05.result;
+
+import com.d.dmybatis05.annotation.TableField;
+import com.d.dmybatis05.util.StringUtil;
+
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.Collections;
+import java.util.LinkedList;
+import java.util.List;
+
+/**
+ * @description: ResultSet 解析器
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-22 21:58:01
+ * @modify:
+ */
+
+public class ResultSetParser {
+
+    private ResultSet resultSet;
+
+    private Class<?> methodReturnType;
+
+    private Class<?> rowType;
+
+    public ResultSetParser(ResultSet resultSet, Class<?> methodReturnType, Class<?> rowType) {
+        this.resultSet = resultSet;
+        this.methodReturnType = methodReturnType;
+        this.rowType = rowType;
+    }
+
+    public Object parse() {
+        if (methodReturnType.isAssignableFrom(List.class)) {
+            return parseList();
+        } else {
+            try {
+                resultSet.next();
+                return parseOne();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    private Object parseList() {
+        try {
+
+            List<Object> tList = new LinkedList<>();
+            while (resultSet.next()) {
+                tList.add(parseOne());
+            }
+            return tList;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+
+    private Object parseOne() {
+        try {
+            Object instance = rowType.getConstructor().newInstance();
+
+            Method[] rowTypeMethods = rowType.getMethods();
+            for (Method rowTypeMethod : rowTypeMethods) {
+                if (rowTypeMethod.getName().startsWith("set")) {
+                    String propertyName = StringUtil.resolvePropertyName(rowTypeMethod);
+                    Field field = rowType.getDeclaredField(propertyName);
+                    TableField tableField = field.getAnnotation(TableField.class);
+                    String columnName = tableField.value();
+
+                    Object value = resultSet.getObject(columnName, field.getType());
+                    rowTypeMethod.invoke(instance, value);
+                }
+            }
+
+            return instance;
+        } catch (SQLException | NoSuchMethodException | InstantiationException | IllegalAccessException |
+                 InvocationTargetException | NoSuchFieldException e) {
+            throw new RuntimeException(e);
+        }
+    }
+}
+
+```
+
+修改 DaoProxy 中的 execute 方法如下：
+
+```java
+private Object execute(Object proxy, Method method, Object[] args) {
+        // 获取被代理的方法所绑定的 SQL 语句，所以这里需要传入 Configuration 对象
+        String sqlId = method.getDeclaringClass().getName() + "." + method.getName();
+        SqlInfo sqlInfo = configuration.getDaoInfo().getSql(sqlId);
+
+        System.out.println("SQL: \n" + sqlInfo.getSql());
+
+        PreparedStatementBuilder statementBuilder = new PreparedStatementBuilder(sqlInfo.getSql(), args, connection, method);
+        PreparedStatement preparedStatement = statementBuilder.build();
+        try {
+
+            switch (sqlInfo.getSqlType()) {
+                case UPDATE:
+                case DELETE:
+                case INSERT:
+                    int row = preparedStatement.executeUpdate();
+                    System.out.println("被影响的行数： " + row);
+                    return row;
+                case SELECT:
+                    ResultSet resultSet = preparedStatement.executeQuery();
+                    System.out.println("读取到的数据长度为：" + resultSet.getFetchSize());
+                    return new ResultSetParser(resultSet, method.getReturnType(), sqlInfo.getRowType()).parse();
+                default:
+                    throw new RuntimeException();
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+```
+
+编写测试类如下：
+
+```java
+package com.d.dmybatis05.result;
+
+import com.d.dmybatis05.User;
+import com.d.dmybatis05.UserDao;
+import com.d.dmybatis05.config.Configuration;
+import com.d.dmybatis05.config.ConfigurationBuilder;
+import com.d.dmybatis05.session.SqlSession;
+import com.d.dmybatis05.session.SqlSessionFactory;
+import org.junit.Test;
+
+import java.time.LocalDateTime;
+
+/**
+ * @description:
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-22 22:44:35
+ * @modify:
+ */
+
+public class ResultSetParserTest {
+
+    @Test
+    public void test() {
+        Configuration configuration = ConfigurationBuilder.build("dmybatis-config.xml");
+        SqlSessionFactory factory = new SqlSessionFactory(configuration);
+        SqlSession sqlSession = factory.openSession();
+        UserDao userDao = sqlSession.getDao(UserDao.class);
+
+        System.out.println(userDao.selectAll());
+    }
+
+}
+
+```
+
+测试结果如下：
+
+```text
+SQL: 
+SELECT * FROM user;
+paramMap: 
+{}
+读取到的数据长度为：0
+[User{id='1', username='123', password='123', createDateTime=2023-07-22T21:46:10, updateDateTime=2023-07-22T21:46:12, deleted=0}]
+
+```
+
+读取数据长度为 0 那个不用管，那个方法的返回值好像不是数据的行数。
+

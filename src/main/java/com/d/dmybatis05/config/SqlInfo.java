@@ -14,12 +14,15 @@ public class SqlInfo {
 
     private SqlType sqlType;
 
+    private Class<?> rowType;
+
     public SqlInfo() {
     }
 
-    public SqlInfo(String sql, SqlType sqlType) {
+    public SqlInfo(String sql, SqlType sqlType, Class<?> rowType) {
         this.sql = sql;
         this.sqlType = sqlType;
+        this.rowType = rowType;
     }
 
     public String getSql() {
@@ -36,6 +39,14 @@ public class SqlInfo {
 
     public void setSqlType(SqlType sqlType) {
         this.sqlType = sqlType;
+    }
+
+    public Class<?> getRowType() {
+        return rowType;
+    }
+
+    public void setRowType(Class<?> rowType) {
+        this.rowType = rowType;
     }
 
     public enum SqlType {

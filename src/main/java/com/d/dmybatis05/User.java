@@ -1,5 +1,8 @@
 package com.d.dmybatis05;
 
+import com.d.dmybatis05.annotation.TableField;
+import org.junit.Test;
+
 import java.time.LocalDateTime;
 
 /**
@@ -12,16 +15,22 @@ import java.time.LocalDateTime;
 
 public class User {
 
+    @TableField("id")
     private String id;
 
+    @TableField("username")
     private String username;
 
+    @TableField("password")
     private String password;
 
+    @TableField("create_date_time")
     private LocalDateTime createDateTime;
 
+    @TableField("update_date_time")
     private LocalDateTime updateDateTime;
 
+    @TableField("deleted")
     private Integer deleted;
 
     public User() {

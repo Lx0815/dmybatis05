@@ -43,21 +43,31 @@ public class ConfigurationBuilder {
     }
 
     private static DaoInfo parseDaos() {
-        List<Node> daoNodeList = document.selectNodes("/config/daos/dao");
-        Map<String, SqlInfo> sqlMap = new HashMap<>();
-        for (Node node : daoNodeList) {
-            Element daoEle = (Element) node;
-            String classPath = daoEle.attributeValue("id");
+        try {
 
-            List<Element> elementList = daoEle.elements();
-            for (Element element : elementList) {
-                String sqlId = element.attributeValue("id");
-                String sql = element.getTextTrim();
-                SqlInfo.SqlType sqlType = SqlInfo.SqlType.of(element.getName());
-                sqlMap.put(classPath + "." + sqlId, new SqlInfo(sql, sqlType));
+            List<Node> daoNodeList = document.selectNodes("/config/daos/dao");
+            Map<String, SqlInfo> sqlMap = new HashMap<>();
+            for (Node node : daoNodeList) {
+                Element daoEle = (Element) node;
+                String classPath = daoEle.attributeValue("id");
+
+                List<Element> elementList = daoEle.elements();
+                for (Element element : elementList) {
+                    String sqlId = element.attributeValue("id");
+                    String sql = element.getTextTrim();
+                    SqlInfo.SqlType sqlType = SqlInfo.SqlType.of(element.getName());
+                    Class<?> rowType = null;
+                    if (sqlType == SqlInfo.SqlType.SELECT) {
+                        String rowTypeStr = element.attributeValue("rowType");
+                        rowType = Class.forName(rowTypeStr);
+                    }
+                    sqlMap.put(classPath + "." + sqlId, new SqlInfo(sql, sqlType, rowType));
+                }
             }
+            return new DaoInfo(sqlMap);
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException(e);
         }
-        return new DaoInfo(sqlMap);
     }
 
     private static ConnectionInfo parseConnection() {

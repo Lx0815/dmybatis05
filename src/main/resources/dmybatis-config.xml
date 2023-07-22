@@ -21,7 +21,7 @@
         <!-- UserDao 的 SQL 配置，id 为 UserDao 的全类名 -->
         <dao id="com.d.dmybatis05.UserDao">
             <!-- UserDao 中的 selectAll 方法所绑定的 SQL 语句 -->
-            <select id="selectAll">
+            <select id="selectAll" rowType="com.d.dmybatis05.User">
                 SELECT * FROM user;
             </select>
 

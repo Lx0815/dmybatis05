@@ -3,6 +3,7 @@ package com.d.dmybatis05.proxy;
 import com.d.dmybatis05.builder.PreparedStatementBuilder;
 import com.d.dmybatis05.config.Configuration;
 import com.d.dmybatis05.config.SqlInfo;
+import com.d.dmybatis05.result.ResultSetParser;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -59,7 +60,7 @@ public class DaoProxy implements InvocationHandler {
                 case SELECT:
                     ResultSet resultSet = preparedStatement.executeQuery();
                     System.out.println("读取到的数据长度为：" + resultSet.getFetchSize());
-                    return null;
+                    return new ResultSetParser(resultSet, method.getReturnType(), sqlInfo.getRowType()).parse();
                 default:
                     throw new RuntimeException();
             }
