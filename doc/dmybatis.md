@@ -153,13 +153,16 @@ public class JDBC01 {
 ## 1.2 如何将 SQL 和 操作数据库的方法 进行绑定？
 经过 1.1 的分析，我们已经能够使用户对 SQL 执行流程中需要变化的地方进行自定义了。而且，我们是在用户调用了和 SQL 绑定的 方法 时获取并执行对应的 SQL。这一步要怎么实现呢？**我们不可能知道用户在什么接口中定义了什么方法，也就是说，我们无法在编译时就得知用户定义的方法的信息，也就是说，我们需要在运行时获取用户定义的方法的信息。**
 还没想到？还没想到？还没想到？在运行时获取类和方法的信息，**反射**啊**。**用户只需要告诉我们：定义了什么接口，该接口的方法都是用于操作数据库的，而且在配置文件中完成了接口方法和 SQL 的一一对应的配置关系。我们就能通过该接口的类对象，获取该接口的所有方法，进而将方法和 SQL 进行绑定。
+
 ## 1.3 如何使用户调用 操作数据库的方法 时，由我们（框架）代替？
 有前文可知，用户只需要调用 操作数据的方法 即可利用框架完成对数据库的操作。而框架要做的事就是在用户调用这个操作数据库的方法的时候，执行对应的 SQL，那么怎么做到这一步呢？
 正常手段来说，我们可以写一个类去继承用户定义的接口，然后实现其方法，在其方法中执行对应的 SQL。但问题是：用户定义的接口不是编译时可知的，同样也需要在运行时动态获取，这里应该就不需要提示了，没错，和上文一样，通过 **反射 ** 在运行时动态的创建一个代理类去实现用户定义的接口。这样就能使用户调用接口方法时跳转到我们定义的方法里了。其实这是 JDK 的动态代理，说这么多，可能不大懂，上代码吧。
 [JDK 动态代理](https://github.com/Lx0815/blogs/blob/main/java/%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90/JDK%20%E5%8A%A8%E6%80%81%E4%BB%A3%E7%90%86.md)
+
 # 2 DMyBatis框架的使用方式
 理清了框架需要干的活和用户需要干的活之后，就可以重新梳理一下流程了。
 用户端的代码将简化为下面这种形式：
+
 ```xml
 <config>
   <!-- 数据库连接信息 -->
@@ -237,7 +240,7 @@ public class Main {
    2. `Configuration` 对象包含 `ConnectionInfo` 对象和 `DaoInfo` 对象，分别对应配置文件中的 `connection` 标签和 `daos` 标签
 2. 提供会话工厂
    1. `SqlSessionFactory`：其构造方法接受一个 `Configuration` 对象，用于创建会话对象（开启事务）
-   2. `SqlSession`：其构造方法接受一个 `Configuration` 对象，通过 `Configuration` 对象开启事务（会话）、提交事务等操作。
+   2. `SqlSession`：其构造方法接受一个 `Configuration` 对象，通过 `Connection`  对象开启事务（会话）、提交事务等操作。
 3. 创建 Dao 接口的代理对象
    1. 此步骤通过 `SqlSession` 对象完成
 4. 封装 SQL 参数
@@ -249,6 +252,204 @@ public class Main {
 7. 提交事务/回滚事务
    1. 通过 `SqlSession` 对象完成
 # 3 详细设计
+
+为了便于后续设计时进行测试，我们先进行一些准备工作：
+
+1. 创建测试用的数据库和表
+
+```sql
+DROP DATABASE IF EXISTS dmybatis05;
+CREATE DATABASE IF NOT EXISTS dmybatis05;
+
+USE dmybatis05;
+
+CREATE TABLE `user`
+(
+    `id` CHAR(32) PRIMARY KEY COMMENT '主键 ID',
+    `username` VARCHAR(32) NOT NULL COMMENT '用户名',
+    `password` VARCHAR(16) NOT NULL COMMENT '密码',
+    `create_date_time` DATETIME NOT NULL COMMENT '创建时间',
+    `update_date_time` DATETIME NOT NULL COMMENT '更新时间',
+    `deleted` TINYINT DEFAULT 0 COMMENT '逻辑删除字段，0 表示未删除'
+) COMMENT '用户表';
+```
+
+2. 创建对应的类
+
+UserDao 和 User：
+
+```java
+package com.d.dmybatis05;
+
+import java.util.List;
+
+/**
+ * @description:
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-05-31 15:45:53
+ * @modify:
+ */
+
+public interface UserDao {
+
+    List<User> selectAll();
+
+    int insert(User user);
+
+}
+
+```
+
+```java
+package com.d.dmybatis05;
+
+import java.time.LocalDateTime;
+
+/**
+ * @description:
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-05-19 22:29:22
+ * @modify:
+ */
+
+public class User {
+
+    private String id;
+
+    private String username;
+
+    private String password;
+
+    private LocalDateTime createDateTime;
+
+    private LocalDateTime updateDateTime;
+
+    private Integer deleted;
+
+    public User() {
+    }
+
+    public User(String id, String username, String password, LocalDateTime createDateTime, LocalDateTime updateDateTime,
+                Integer deleted) {
+        this.id = id;
+        this.username = username;
+        this.password = password;
+        this.createDateTime = createDateTime;
+        this.updateDateTime = updateDateTime;
+        this.deleted = deleted;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public LocalDateTime getCreateDateTime() {
+        return createDateTime;
+    }
+
+    public void setCreateDateTime(LocalDateTime createDateTime) {
+        this.createDateTime = createDateTime;
+    }
+
+    public LocalDateTime getUpdateDateTime() {
+        return updateDateTime;
+    }
+
+    public void setUpdateDateTime(LocalDateTime updateDateTime) {
+        this.updateDateTime = updateDateTime;
+    }
+
+    public Integer getDeleted() {
+        return deleted;
+    }
+
+    public void setDeleted(Integer deleted) {
+        this.deleted = deleted;
+    }
+
+    @Override
+    public String toString() {
+        return "User{" +
+               "id='" + id + '\'' +
+               ", username='" + username + '\'' +
+               ", password='" + password + '\'' +
+               ", createDateTime=" + createDateTime +
+               ", updateDateTime=" + updateDateTime +
+               ", deleted=" + deleted +
+               '}';
+    }
+}
+
+```
+
+3. 修改配置文件如下：(具体的配置根据你们自己的情况写   )
+
+```xml
+<?xml version="1.0" encoding="UTF-8" ?>
+<config>
+    <!-- 数据库连接信息 -->
+    <connection>
+        <url>
+            jdbc:mysql:localhost:3306/dmybatis05
+        </url>
+        <driver>
+            com.mysql.cj.jdbc.Driver
+        </driver>
+        <username>
+            root
+        </username>
+        <password>
+            123456
+        </password>
+    </connection>
+
+    <!-- dao 数据访问层的 SQL 配置 -->
+    <daos>
+        <!-- UserDao 的 SQL 配置，id 为 UserDao 的全类名 -->
+        <dao id="com.d.dmybatis05.UserDao">
+            <!-- UserDao 中的 selectAll 方法所绑定的 SQL 语句 -->
+            <select id="selectAll">
+                SELECT * FROM user;
+            </select>
+        </dao>
+    </daos>
+</config>
+```
+
+4. 引入 JDBC 驱动
+
+```xml
+<dependency>
+    <groupId>mysql</groupId>
+    <artifactId>mysql-connector-java</artifactId>
+    <version>8.0.31</version>
+</dependency>
+```
+
+
+
 ## 3.1 解析配置文件
 ### 3.1.1 依赖引入
 配置文件这边选用了 XML 格式，所以解析配置文件将使用如下依赖：
@@ -603,11 +804,11 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 
 /**
- \* @description: SqlSessionFactory 的工厂类
- \* @author: Ding
- \* @version: 1.0
- \* @createTime: 2023-07-21 23:30:15
- \* @modify:
+ * @description: SqlSessionFactory 的工厂类
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-21 23:30:15
+ * @modify:
  */
 
 public class SqlSessionFactory {
@@ -666,4 +867,166 @@ public class SqlSession {
 ```
 
 ### 3.2.2 新增会话管理操作
+
+```java
+package com.d.dmybatis05.session;
+
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.Objects;
+
+/**
+ * @description: 会话对象
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-21 23:29:37
+ * @modify:
+ */
+
+public class SqlSession {
+
+    private Connection connection;
+
+    public SqlSession(Connection connection) {
+        Objects.requireNonNull(connection, "连接对象为 null");
+        this.connection = connection;
+    }
+
+    /**
+     * 提交事务
+     */
+    public void commit() {
+        try {
+            connection.commit();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * 回滚事务
+     */
+    public void rollback() {
+        try {
+            connection.rollback();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * 关闭会话，即关闭连接
+     */
+    public void close() {
+        try {
+            connection.close();
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+}
+
+```
+
+## 3.3 获取 Dao 的代理类
+
+开启了事务之后，就应该获取 SQL，然后给 SQL 中的参数赋值，然后执行 SQL。那么如何执行我们写在配置文件里的 SQL 呢？前面提到了使用 JDK 的代理模式，即定义一个接口，使该接口的方法与 SQL 语句一一绑定，然后创建其代理类，让其代理类代为执行 SQL 语句。
+
+那么就先定义该代理类吧，该代理类定义如下：
+
+```java
+package com.d.dmybatis05.proxy;
+
+import com.d.dmybatis05.config.Configuration;
+
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+
+/**
+ * @description: Dao 接口的代理类
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-22 9:01:45
+ * @modify:
+ */
+
+public class DaoProxy implements InvocationHandler {
+
+    private Configuration configuration;
+
+    public DaoProxy(Configuration configuration) {
+        this.configuration = configuration;
+    }
+
+    @Override
+    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+        if (method.getDeclaringClass().isInstance(Object.class)) {
+            return method.invoke(proxy, args);
+        }
+        return execute(proxy, method, args);
+    }
+
+    private Object execute(Object proxy, Method method, Object[] args) {
+        // 获取被代理的方法所绑定的 SQL 语句，所以这里需要传入 Configuration 对象
+        String sqlId = method.getDeclaringClass().getName() + "." + method.getName();
+        String sql = configuration.getDaoInfo().getSql(sqlId);
+
+        System.out.println(sql);
+        // TODO: 2023/7/22 暂未写完
+        return null;
+    }
+}
+
+```
+
+现在刚拿到 SQL，我们不妨写一个测试类看看是否真的能获取到绑定的 SQL
+
+测试类：
+
+```java
+package com.d.dmybatis05.proxy;
+
+import com.d.dmybatis05.UserDao;
+import com.d.dmybatis05.config.Configuration;
+import com.d.dmybatis05.config.ConfigurationBuilder;
+import com.d.dmybatis05.config.ConfigurationBuilderTest;
+import com.d.dmybatis05.config.ConnectionInfo;
+import org.junit.Test;
+
+import java.lang.reflect.Proxy;
+
+/**
+ * @description: 代理类测试类
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-22 9:13:47
+ * @modify:
+ */
+
+public class DaoProxyTest {
+
+    @Test
+    public void testCreateProxy() {
+        Configuration configuration = ConfigurationBuilder.build("dmybatis-config.xml");
+
+        Object instance = Proxy.newProxyInstance(DaoProxy.class.getClassLoader(),
+                new Class[]{UserDao.class},
+                new DaoProxy(configuration));
+
+        UserDao userDao = (UserDao) instance;
+        System.out.println(userDao.selectAll());
+    }
+
+}
+
+```
+
+测试结果如下：
+
+```text
+SELECT * FROM user;
+null
+```
+
+说明已经能够获取到 SQL 了。
 

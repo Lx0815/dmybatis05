@@ -3,7 +3,7 @@
     <!-- 数据库连接信息 -->
     <connection>
         <url>
-            jdbc:mysql:localhost:3306/xxx_db
+            jdbc:mysql:localhost:3306/dmybatis05
         </url>
         <driver>
             com.mysql.cj.jdbc.Driver
@@ -19,7 +19,7 @@
     <!-- dao 数据访问层的 SQL 配置 -->
     <daos>
         <!-- UserDao 的 SQL 配置，id 为 UserDao 的全类名 -->
-        <dao id="com.xxx.UserDao">
+        <dao id="com.d.dmybatis05.UserDao">
             <!-- UserDao 中的 selectAll 方法所绑定的 SQL 语句 -->
             <select id="selectAll">
                 SELECT * FROM user;
