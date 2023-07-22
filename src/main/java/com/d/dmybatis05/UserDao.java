@@ -14,6 +14,6 @@ public interface UserDao {
 
     List<User> selectAll();
 
-    int insert(User user);
+    Integer insert(User user);
 
 }
