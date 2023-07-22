@@ -1079,6 +1079,199 @@ WHERE `username` = #{username}
 先解析 SQL 中的参数占位符，代码实现：
 
 ```java
+package com.d.dmybatis05.builder;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+/**
+ * @description: PreparedStatement 建造者
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-22 16:28:58
+ * @modify:
+ */
+
+public class PreparedStatementBuilder {
+
+    private String originalSql;
+
+    private Object[] args;
+
+    private Connection connection;
+
+    private PreparedStatement preparedStatement;
+
+    public PreparedStatementBuilder(String originalSql, Object[] args, Connection connection) {
+        this.originalSql = originalSql;
+        this.args = args;
+        this.connection = connection;
+    }
+
+    public PreparedStatement build() {
+        String[] paramArr = resolveSqlParam(originalSql);
+        System.out.println(Arrays.toString(paramArr));
+        return null;
+    }
+
+    private String[] resolveSqlParam(String originalSql) {
+        char[] sqlCharArray = originalSql.toCharArray();
+        StringBuilder prepareStatementAppender = new StringBuilder();
+        StringBuilder propertyValueAppender = new StringBuilder();
+        List<String> paramList = new ArrayList<>();
+
+        for (int i = 0; i < sqlCharArray.length - 3; i++) {
+            if (sqlCharArray[i] == '#' && sqlCharArray[i + 1] == '{') {
+                // 找到占位符了
+                // VALUES (#{id},
+                //         i
+                int j = i + 2;
+                for (; j < sqlCharArray.length; j++) {
+                    if (sqlCharArray[j] == '}') {
+                        break;
+                    } else {
+                        propertyValueAppender.append(sqlCharArray[j]);
+                    }
+                }
+
+                paramList.add(propertyValueAppender.toString());
+                propertyValueAppender.delete(0, propertyValueAppender.length());
+                prepareStatementAppender.append("?");
+
+                i = j + 1;
+            } else {
+                prepareStatementAppender.append(sqlCharArray[i]);
+            }
+        }
+        String prepareSql = prepareStatementAppender.toString();
+        try {
+            preparedStatement = connection.prepareStatement(prepareSql);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return paramList.toArray(new String[0]);
+    }
+}
 
 ```
+
+然后修改 DaoProxy 中的方法，使其调用该类：
+
+```java
+package com.d.dmybatis05.proxy;
+
+import com.d.dmybatis05.builder.PreparedStatementBuilder;
+import com.d.dmybatis05.config.Configuration;
+
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+
+/**
+ * @description: Dao 接口的代理类
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-22 9:01:45
+ * @modify:
+ */
+
+public class DaoProxy implements InvocationHandler {
+
+    private Configuration configuration;
+
+    private Connection connection;
+
+    public DaoProxy(Configuration configuration, Connection connection) {
+        this.configuration = configuration;
+        this.connection = connection;
+    }
+
+    @Override
+    public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
+        if (method.getDeclaringClass().isInstance(Object.class)) {
+            return method.invoke(proxy, args);
+        }
+        return execute(proxy, method, args);
+    }
+
+    private Object execute(Object proxy, Method method, Object[] args) {
+        // 获取被代理的方法所绑定的 SQL 语句，所以这里需要传入 Configuration 对象
+        String sqlId = method.getDeclaringClass().getName() + "." + method.getName();
+        String sql = configuration.getDaoInfo().getSql(sqlId);
+
+        System.out.println(sql);
+
+        PreparedStatementBuilder statementBuilder = new PreparedStatementBuilder(sql, args, connection);
+        PreparedStatement build = statementBuilder.build();
+        return null;
+    }
+}
+
+```
+
+在这个过程中发现，DaoProxy 还需要
+
+ connection 对象，SqlSession 还需要 Configuration 对象，我们通过构造器传入即可。
+
+下面是测试类：
+
+```java
+package com.d.dmybatis05.builder;
+
+import com.d.dmybatis05.User;
+import com.d.dmybatis05.UserDao;
+import com.d.dmybatis05.config.Configuration;
+import com.d.dmybatis05.config.ConfigurationBuilder;
+import com.d.dmybatis05.session.SqlSession;
+import com.d.dmybatis05.session.SqlSessionFactory;
+import org.junit.Test;
+
+/**
+ * @description:
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-22 17:16:58
+ * @modify:
+ */
+
+public class PreparedStatementBuilderTest {
+
+    @Test
+    public void testSqlPrepare() {
+        Configuration configuration = ConfigurationBuilder.build("dmybatis-config.xml");
+        SqlSessionFactory factory = new SqlSessionFactory(configuration);
+        SqlSession sqlSession = factory.openSession();
+        UserDao userDao = sqlSession.getDao(UserDao.class);
+
+        System.out.println(userDao.selectAll());
+        System.out.println("---------");
+        System.out.println(userDao.insert(new User()));
+    }
+
+}
+
+```
+
+测试结果如下：
+
+```
+SELECT * FROM user;
+[]
+null
+---------
+INSERT INTO `user` (`id`, `username`, `password`, `create_date_time`, `update_date_time`, `deleted`) VALUES (#{id}, #{username}, #{password}, #{create_date_time}, #{update_date_time}, #{deleted});
+[id, username, password, create_date_time, update_date_time, deleted]
+null
+
+Process finished with exit code 0
+```
+
+可以发现，现在已经能够成功获取到 SQL 中占位符的信息，以及创建 PrepareStatement 了。
+
+
 
