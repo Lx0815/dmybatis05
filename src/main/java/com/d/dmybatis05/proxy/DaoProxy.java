@@ -40,9 +40,9 @@ public class DaoProxy implements InvocationHandler {
         String sqlId = method.getDeclaringClass().getName() + "." + method.getName();
         String sql = configuration.getDaoInfo().getSql(sqlId);
 
-        System.out.println(sql);
+        System.out.println("SQL: \n" + sql);
 
-        PreparedStatementBuilder statementBuilder = new PreparedStatementBuilder(sql, args, connection);
+        PreparedStatementBuilder statementBuilder = new PreparedStatementBuilder(sql, args, connection, method);
         PreparedStatement build = statementBuilder.build();
         return null;
     }

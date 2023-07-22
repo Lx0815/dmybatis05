@@ -1074,6 +1074,8 @@ WHERE `username` = #{username}
 </insert>
 ```
 
+### 3.4.1 SQL 解析
+
 那么现在就开始编写一个类，用于解析 SQL 中的参数占位符，并根据参数占位符中的参数名称，把用户传入的参数替换到参数占位符的位置。
 
 先解析 SQL 中的参数占位符，代码实现：
@@ -1273,5 +1275,92 @@ Process finished with exit code 0
 
 可以发现，现在已经能够成功获取到 SQL 中占位符的信息，以及创建 PrepareStatement 了。
 
+### 3.4.2 解析方法参数
 
+要解析方法参数，只有一个 Object[] 类型的 args肯定是不够的，之前提到过，方法参数与 SQL 中的参数的绑定是需要用到反射的，所以这边还需要增加一个 Method 字段，并通过构造器传入。
+
+然后我们就应该思考，Dao 接口方法的参数可能会是什么呢？
+
+如果是 SQL ：
+
+```sql
+SELECT * 
+FROM `user`
+WHERE `username` = #{username}
+	AND `password` = #{password};
+```
+
+那么可能用户定义的方法签名长这样：
+
+```java
+User selectByUsernameAndPassword(String username, String password);
+```
+
+也可能长这样：
+
+```java
+User login(User user);// user 对象中包含 username 和 password 属性
+```
+
+也可能用户正在写原生的Servlet项目，喜欢用Map：
+
+```java
+User login(Map<String, Object> paramMap);
+```
+
+你或许会想：为什么不能是数组？是List？
+
+因为数组和List其实是一类，即不存在两者之间的对应关系，如 username 这个属性名对应的值可以是 123 可以是 abc，这种对应关系可以通过定义多个参数，定义对象，Map 的方式来表示，但是无法通过列表表示。
+
+那么为什么需要这种对应关系呢？把数组中的数据挨个放到 SQL 的参数中不行吗？行，但是不利于维护，也很容易出错，一个Object[] 里面卖的什么药，只有你自己知道，同样的Map也是。所以我们这里只实现第一二种。
+
+问题又双来了，无特殊配置的JVM是获取不到方法参数原名称的，大家可以自行实验，获取到的都是 arg1，arg2，.... ，这是为什么呢？这是因为Java编译器在把 Java 源文件编译为 class 字节码的时候做了语法分析将其替换掉了（为什么替换我也不知道），这需要通过一个 JVM 的启动参数进行开启：`-parameters` ，在 Maven 中需要通过 pom 文件配置开启：
+
+```xml
+<plugin>
+    <groupId>org.apache.maven.plugins</groupId>
+    <artifactId>maven-compiler-plugin</artifactId>
+    <version>${maven.compiler.version}</version>
+    <configuration>
+        <source>1.8</source>
+        <target>1.8</target>
+        <compilerArgs>
+            <arg>-parameters</arg>
+        </compilerArgs>
+    </configuration>
+</plugin>
+```
+
+我们这里就不开启了，我们通过一个 @Param 注解来实现类似的功能。
+
+注解代码如下：
+
+```java
+package com.d.dmybatis05.annotation;
+
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+
+/**
+ * @description:
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-22 18:15:44
+ * @modify:
+ */
+
+@Target(ElementType.PARAMETER)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface Param {
+
+    /**
+     * 方法参数名称，即对应 SQL 中的参数占位符名称
+     * @return
+     */
+    String value();
+    
+}
+```
 

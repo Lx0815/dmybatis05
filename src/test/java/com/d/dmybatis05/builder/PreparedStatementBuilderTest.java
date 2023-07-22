@@ -8,6 +8,8 @@ import com.d.dmybatis05.session.SqlSession;
 import com.d.dmybatis05.session.SqlSessionFactory;
 import org.junit.Test;
 
+import java.time.LocalDateTime;
+
 /**
  * @description:
  * @author: Ding
@@ -30,4 +32,13 @@ public class PreparedStatementBuilderTest {
         System.out.println(userDao.insert(new User()));
     }
 
+    @Test
+    public void testResolveParam() {
+        Configuration configuration = ConfigurationBuilder.build("dmybatis-config.xml");
+        SqlSessionFactory factory = new SqlSessionFactory(configuration);
+        SqlSession sqlSession = factory.openSession();
+        UserDao userDao = sqlSession.getDao(UserDao.class);
+
+        System.out.println(userDao.insert(new User("1", "123", "123", LocalDateTime.now(), LocalDateTime.now(), 0)));
+    }
 }
