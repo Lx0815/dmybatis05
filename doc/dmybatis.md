@@ -1030,3 +1030,40 @@ null
 
 说明已经能够获取到 SQL 了。
 
+## 3.4 注入 SQL 参数
+
+刚刚获取到的 SQL 只是一条最简单的全表查询语句，这里面是不需要从外部传入参数的，那么什么 SQL 需要从程序里传入参数呢？例如新增用户的时候：
+
+```sql
+INSERT INTO `user` (`id`, `username`, `password`, `create_date_time`, `update_date_time`, `deleted`)
+VALUES (#{id}, #{username}, #{password}, #{create_date_time}, #{update_date_time}, #{deleted});
+```
+
+又或者用户登录的时候：
+
+```sql
+SELECT * 
+FROM `user`
+WHERE `username` = #{username}
+	AND `password` = #{password};
+```
+
+这里是通过 #{propertyName} 的方式来表达占位符的，即把什么属性放在什么地方。
+
+所以为了便于后续的测试，这里新增一条插入语句。
+
+```xml
+<insert id="insert">
+    INSERT INTO `user` (`id`, `username`, `password`, `create_date_time`, `update_date_time`, `deleted`)
+    VALUES (#{id}, #{username}, #{password}, #{create_date_time}, #{update_date_time}, #{deleted});
+</insert>
+```
+
+那么现在就开始编写一个类，用于解析 SQL 中的参数占位符，并根据参数占位符中的参数名称，把用户传入的参数替换到参数占位符的位置。
+
+先解析 SQL 中的参数占位符，代码实现：
+
+```java
+
+```
+

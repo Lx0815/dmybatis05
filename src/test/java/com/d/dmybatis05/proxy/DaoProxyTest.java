@@ -5,6 +5,8 @@ import com.d.dmybatis05.config.Configuration;
 import com.d.dmybatis05.config.ConfigurationBuilder;
 import com.d.dmybatis05.config.ConfigurationBuilderTest;
 import com.d.dmybatis05.config.ConnectionInfo;
+import com.d.dmybatis05.session.SqlSession;
+import com.d.dmybatis05.session.SqlSessionFactory;
 import org.junit.Test;
 
 import java.lang.reflect.Proxy;
@@ -22,12 +24,9 @@ public class DaoProxyTest {
     @Test
     public void testCreateProxy() {
         Configuration configuration = ConfigurationBuilder.build("dmybatis-config.xml");
-
-        Object instance = Proxy.newProxyInstance(DaoProxy.class.getClassLoader(),
-                new Class[]{UserDao.class},
-                new DaoProxy(configuration));
-
-        UserDao userDao = (UserDao) instance;
+        SqlSessionFactory sqlSessionFactory = new SqlSessionFactory(configuration);
+        SqlSession sqlSession = sqlSessionFactory.openSession();
+        UserDao userDao = sqlSession.getDao(UserDao.class);
         System.out.println(userDao.selectAll());
     }
 

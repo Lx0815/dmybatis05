@@ -24,6 +24,11 @@
             <select id="selectAll">
                 SELECT * FROM user;
             </select>
+
+            <insert id="insert">
+                INSERT INTO `user` (`id`, `username`, `password`, `create_date_time`, `update_date_time`, `deleted`)
+                VALUES (#{id}, #{username}, #{password}, #{create_date_time}, #{update_date_time}, #{deleted});
+            </insert>
         </dao>
     </daos>
 </config>

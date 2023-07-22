@@ -1,5 +1,10 @@
 package com.d.dmybatis05.session;
 
+import com.d.dmybatis05.UserDao;
+import com.d.dmybatis05.config.Configuration;
+import com.d.dmybatis05.proxy.DaoProxy;
+
+import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.Objects;
@@ -14,11 +19,27 @@ import java.util.Objects;
 
 public class SqlSession {
 
+    private Configuration configuration;
+
     private Connection connection;
 
-    public SqlSession(Connection connection) {
+    public SqlSession(Configuration configuration, Connection connection) {
         Objects.requireNonNull(connection, "连接对象为 null");
+        this.configuration = configuration;
         this.connection = connection;
+    }
+
+    /**
+     * 获取 Dao 的代理对象
+     * @param daoClz dao 接口的类对象
+     * @return 返回 Dao 的代理对象
+     * @param <T> Dao 接口的类型
+     */
+    @SuppressWarnings("unchecked")
+    public <T> T getDao(Class<T> daoClz) {
+        return (T) Proxy.newProxyInstance(DaoProxy.class.getClassLoader(),
+                new Class[]{UserDao.class},
+                new DaoProxy(configuration, connection));
     }
 
     /**

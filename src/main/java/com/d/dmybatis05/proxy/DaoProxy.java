@@ -1,9 +1,12 @@
 package com.d.dmybatis05.proxy;
 
+import com.d.dmybatis05.builder.PreparedStatementBuilder;
 import com.d.dmybatis05.config.Configuration;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 
 /**
  * @description: Dao 接口的代理类
@@ -17,8 +20,11 @@ public class DaoProxy implements InvocationHandler {
 
     private Configuration configuration;
 
-    public DaoProxy(Configuration configuration) {
+    private Connection connection;
+
+    public DaoProxy(Configuration configuration, Connection connection) {
         this.configuration = configuration;
+        this.connection = connection;
     }
 
     @Override
@@ -35,7 +41,9 @@ public class DaoProxy implements InvocationHandler {
         String sql = configuration.getDaoInfo().getSql(sqlId);
 
         System.out.println(sql);
-        // TODO: 2023/7/22 暂未写完
+
+        PreparedStatementBuilder statementBuilder = new PreparedStatementBuilder(sql, args, connection);
+        PreparedStatement build = statementBuilder.build();
         return null;
     }
 }

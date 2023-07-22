@@ -30,7 +30,7 @@ public class SqlSessionFactory {
     }
 
     public SqlSession openSession() {
-        return new SqlSession(newConnection());
+        return new SqlSession(configuration, newConnection());
     }
 
     private Connection newConnection() {
