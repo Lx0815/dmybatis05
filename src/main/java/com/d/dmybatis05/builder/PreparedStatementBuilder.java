@@ -46,7 +46,7 @@ public class PreparedStatementBuilder {
 
         try {
             for (int i = 0; i < sqlParamNameArr.length; i++) {
-                preparedStatement.setObject(i, paramMap.get(sqlParamNameArr[i]));
+                preparedStatement.setObject(i + 1, paramMap.get(sqlParamNameArr[i]));
             }
             return preparedStatement;
         } catch (SQLException e) {
@@ -94,8 +94,8 @@ public class PreparedStatementBuilder {
         StringBuilder propertyValueAppender = new StringBuilder();
         List<String> paramList = new ArrayList<>();
 
-        for (int i = 0; i < sqlCharArray.length - 3; i++) {
-            if (sqlCharArray[i] == '#' && sqlCharArray[i + 1] == '{') {
+        for (int i = 0; i < sqlCharArray.length; i++) {
+            if (i < sqlCharArray.length - 1 && sqlCharArray[i] == '#' && sqlCharArray[i + 1] == '{') {
                 // 找到占位符了
                 // VALUES (#{id},
                 //         i
@@ -112,7 +112,7 @@ public class PreparedStatementBuilder {
                 propertyValueAppender.delete(0, propertyValueAppender.length());
                 prepareStatementAppender.append("?");
 
-                i = j + 1;
+                i = j;
             } else {
                 prepareStatementAppender.append(sqlCharArray[i]);
             }

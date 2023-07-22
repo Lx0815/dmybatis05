@@ -44,7 +44,7 @@ public class ConfigurationBuilder {
 
     private static DaoInfo parseDaos() {
         List<Node> daoNodeList = document.selectNodes("/config/daos/dao");
-        Map<String, String> sqlMap = new HashMap<>();
+        Map<String, SqlInfo> sqlMap = new HashMap<>();
         for (Node node : daoNodeList) {
             Element daoEle = (Element) node;
             String classPath = daoEle.attributeValue("id");
@@ -53,7 +53,8 @@ public class ConfigurationBuilder {
             for (Element element : elementList) {
                 String sqlId = element.attributeValue("id");
                 String sql = element.getTextTrim();
-                sqlMap.put(classPath + "." + sqlId, sql);
+                SqlInfo.SqlType sqlType = SqlInfo.SqlType.of(element.getName());
+                sqlMap.put(classPath + "." + sqlId, new SqlInfo(sql, sqlType));
             }
         }
         return new DaoInfo(sqlMap);

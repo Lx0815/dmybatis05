@@ -1126,8 +1126,8 @@ public class PreparedStatementBuilder {
         StringBuilder propertyValueAppender = new StringBuilder();
         List<String> paramList = new ArrayList<>();
 
-        for (int i = 0; i < sqlCharArray.length - 3; i++) {
-            if (sqlCharArray[i] == '#' && sqlCharArray[i + 1] == '{') {
+        for (int i = 0; i < sqlCharArray.length; i++) {
+            if (i < sqlCharArray.length - 1 && sqlCharArray[i] == '#' && sqlCharArray[i + 1] == '{') {
                 // 找到占位符了
                 // VALUES (#{id},
                 //         i
@@ -1144,7 +1144,7 @@ public class PreparedStatementBuilder {
                 propertyValueAppender.delete(0, propertyValueAppender.length());
                 prepareStatementAppender.append("?");
 
-                i = j + 1;
+                i = j;
             } else {
                 prepareStatementAppender.append(sqlCharArray[i]);
             }
@@ -1541,3 +1541,183 @@ null
 
 所以，我们在读取 SQL 的时候不能只读取 SQL 字符串，还需要保存其他的参数，下面修改如下：
 
+1. 新增 SqlInfo 类
+
+```java
+package com.d.dmybatis05.config;
+
+/**
+ * @description:
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-22 19:44:26
+ * @modify:
+ */
+
+public class SqlInfo {
+
+    private String sql;
+
+    private SqlType sqlType;
+
+    public SqlInfo() {
+    }
+
+    public SqlInfo(String sql, SqlType sqlType) {
+        this.sql = sql;
+        this.sqlType = sqlType;
+    }
+
+    public String getSql() {
+        return sql;
+    }
+
+    public void setSql(String sql) {
+        this.sql = sql;
+    }
+
+    public SqlType getSqlType() {
+        return sqlType;
+    }
+
+    public void setSqlType(SqlType sqlType) {
+        this.sqlType = sqlType;
+    }
+
+    public enum SqlType {
+        INSERT, UPDATE, DELETE, SELECT;
+
+        public static SqlType of(String value) {
+            if ("insert".equalsIgnoreCase(value)) {
+                return INSERT;
+            } else if ("update".equalsIgnoreCase(value)) {
+                return UPDATE;
+            } else if ("delete".equalsIgnoreCase(value)) {
+                return DELETE;
+            } else if ("select".equalsIgnoreCase(value)) {
+                return SELECT;
+            } else {
+                throw new RuntimeException("标签错误");
+            }
+        }
+    }
+
+}
+```
+
+2. 修改原有的类
+
+```java
+    private static DaoInfo parseDaos() {
+        List<Node> daoNodeList = document.selectNodes("/config/daos/dao");
+        Map<String, SqlInfo> sqlMap = new HashMap<>();
+        for (Node node : daoNodeList) {
+            Element daoEle = (Element) node;
+            String classPath = daoEle.attributeValue("id");
+
+            List<Element> elementList = daoEle.elements();
+            for (Element element : elementList) {
+                String sqlId = element.attributeValue("id");
+                String sql = element.getTextTrim();
+                SqlInfo.SqlType sqlType = SqlInfo.SqlType.of(element.getName());
+                sqlMap.put(classPath + "." + sqlId, new SqlInfo(sql, sqlType));
+            }
+        }
+        return new DaoInfo(sqlMap);
+    }
+
+// -----------------
+
+public class DaoInfo {
+
+    /**
+     * 存储 SQl 语句，格式为：{@code <sqlId, sql>} , {@code sqlId} 的格式为：XxxDao的全类名.方法名。
+     * <p>notice：该 Map 不可修改</p>
+     */
+    private final Map<String, SqlInfo> sqlMap;
+
+    /**
+     *
+     * @param sqlMap 格式为：{@code <sqlId, sql>} 的 Map
+     */
+    public DaoInfo(Map<String, SqlInfo> sqlMap) {
+        this.sqlMap = Collections.unmodifiableMap(sqlMap);
+    }
+
+    /**
+     * 获取 SQL
+     * @param sqlId sqlId，格式为：XxxDao的全类名.方法名
+     * @return 返回获取到的 SQL 语句，可能为 null
+     */
+    public SqlInfo getSql(String sqlId) {
+        Objects.requireNonNull(sqlId, "sqlId is null");
+        return sqlMap.get(sqlId);
+    }
+
+}
+```
+
+然后便可执行真正的 SQL 了，由于查询方法返回的 ResultSet 需要进行封装，而 插入语句却不需要额外的封装，所以这里先用 insert 方法进行测试。
+
+只需要改动 DaoProxy 的 execute 方法即可：
+
+```java
+private Object execute(Object proxy, Method method, Object[] args) {
+        // 获取被代理的方法所绑定的 SQL 语句，所以这里需要传入 Configuration 对象
+        String sqlId = method.getDeclaringClass().getName() + "." + method.getName();
+        SqlInfo sqlInfo = configuration.getDaoInfo().getSql(sqlId);
+
+        System.out.println("SQL: \n" + sqlInfo.getSql());
+
+        PreparedStatementBuilder statementBuilder = new PreparedStatementBuilder(sqlInfo.getSql(), args, connection, method);
+        PreparedStatement preparedStatement = statementBuilder.build();
+        try {
+
+            switch (sqlInfo.getSqlType()) {
+                case UPDATE:
+                case DELETE:
+                case INSERT:
+                    int row = preparedStatement.executeUpdate();
+                    System.out.println("被影响的行数： " + row);
+                    return row;
+                case SELECT:
+                    ResultSet resultSet = preparedStatement.executeQuery();
+                    System.out.println("读取到的数据长度为：" + resultSet.getFetchSize());
+                    return null;
+                default:
+                    throw new RuntimeException();
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+```
+
+测试方法如下：
+
+```java
+    @Test
+    public void testPreparedStatementBuilder() {
+        Configuration configuration = ConfigurationBuilder.build("dmybatis-config.xml");
+        SqlSessionFactory factory = new SqlSessionFactory(configuration);
+        SqlSession sqlSession = factory.openSession();
+        UserDao userDao = sqlSession.getDao(UserDao.class);
+
+        System.out.println(userDao.insert(new User("1", "123", "123", LocalDateTime.now(), LocalDateTime.now(), 0)));
+    }
+```
+
+根据测试结果：
+
+```text
+SQL: 
+INSERT INTO `user` (`id`, `username`, `password`, `create_date_time`, `update_date_time`, `deleted`) VALUES (#{id}, #{username}, #{password}, #{createDateTime}, #{updateDateTime}, #{deleted});
+paramMap: 
+{password=123, deleted=0, id=1, updateDateTime=2023-07-22T21:46:11.733, username=123, createDateTime=2023-07-22T21:46:10.313}
+被影响的行数： 1
+1
+```
+
+可知，数据已经插入到数据库了，那么查询一下数据库看看是不是？
+
+![image](https://raw.githubusercontent.com/Lx0815/blog_image_repository/main/images/202307222154527.png)

@@ -2,11 +2,14 @@ package com.d.dmybatis05.proxy;
 
 import com.d.dmybatis05.builder.PreparedStatementBuilder;
 import com.d.dmybatis05.config.Configuration;
+import com.d.dmybatis05.config.SqlInfo;
 
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 
 /**
  * @description: Dao 接口的代理类
@@ -38,12 +41,30 @@ public class DaoProxy implements InvocationHandler {
     private Object execute(Object proxy, Method method, Object[] args) {
         // 获取被代理的方法所绑定的 SQL 语句，所以这里需要传入 Configuration 对象
         String sqlId = method.getDeclaringClass().getName() + "." + method.getName();
-        String sql = configuration.getDaoInfo().getSql(sqlId);
+        SqlInfo sqlInfo = configuration.getDaoInfo().getSql(sqlId);
 
-        System.out.println("SQL: \n" + sql);
+        System.out.println("SQL: \n" + sqlInfo.getSql());
 
-        PreparedStatementBuilder statementBuilder = new PreparedStatementBuilder(sql, args, connection, method);
+        PreparedStatementBuilder statementBuilder = new PreparedStatementBuilder(sqlInfo.getSql(), args, connection, method);
         PreparedStatement preparedStatement = statementBuilder.build();
-        return null;
+        try {
+
+            switch (sqlInfo.getSqlType()) {
+                case UPDATE:
+                case DELETE:
+                case INSERT:
+                    int row = preparedStatement.executeUpdate();
+                    System.out.println("被影响的行数： " + row);
+                    return row;
+                case SELECT:
+                    ResultSet resultSet = preparedStatement.executeQuery();
+                    System.out.println("读取到的数据长度为：" + resultSet.getFetchSize());
+                    return null;
+                default:
+                    throw new RuntimeException();
+            }
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 }

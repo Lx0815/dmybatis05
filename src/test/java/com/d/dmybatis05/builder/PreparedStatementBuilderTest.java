@@ -29,7 +29,7 @@ public class PreparedStatementBuilderTest {
 
         System.out.println(userDao.selectAll());
         System.out.println("---------");
-        System.out.println(userDao.insert(new User()));
+//        System.out.println(userDao.insert(new User()));
     }
 
     @Test
