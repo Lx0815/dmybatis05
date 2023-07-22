@@ -43,7 +43,7 @@ public class DaoProxy implements InvocationHandler {
         System.out.println("SQL: \n" + sql);
 
         PreparedStatementBuilder statementBuilder = new PreparedStatementBuilder(sql, args, connection, method);
-        PreparedStatement build = statementBuilder.build();
+        PreparedStatement preparedStatement = statementBuilder.build();
         return null;
     }
 }

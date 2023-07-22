@@ -43,7 +43,15 @@ public class PreparedStatementBuilder {
         // SQL 解析完了，现在应该解析参数了
         Map<String, Object> paramMap = resolveParam(method, args);
         System.out.println("paramMap: \n" + paramMap);
-        return null;
+
+        try {
+            for (int i = 0; i < sqlParamNameArr.length; i++) {
+                preparedStatement.setObject(i, paramMap.get(sqlParamNameArr[i]));
+            }
+            return preparedStatement;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private Map<String, Object> resolveParam(Method method, Object[] args) {

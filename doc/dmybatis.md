@@ -1364,3 +1364,180 @@ public @interface Param {
 }
 ```
 
+参数解析类：
+
+```java
+package com.d.dmybatis05.builder;
+
+import com.d.dmybatis05.annotation.Param;
+
+import java.lang.annotation.Annotation;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.util.*;
+
+/**
+ * @description: PreparedStatement 建造者
+ * @author: Ding
+ * @version: 1.0
+ * @createTime: 2023-07-22 16:28:58
+ * @modify:
+ */
+
+public class PreparedStatementBuilder {
+
+    private String originalSql;
+
+    private Object[] args;
+
+    private Connection connection;
+
+    private Method method;
+
+    private PreparedStatement preparedStatement;
+
+    public PreparedStatementBuilder(String originalSql, Object[] args, Connection connection, Method method) {
+        this.originalSql = originalSql;
+        this.args = args;
+        this.connection = connection;
+        this.method = method;
+    }
+
+    public PreparedStatement build() {
+        String[] sqlParamNameArr = resolveSqlParam(originalSql);
+        // SQL 解析完了，现在应该解析参数了
+        Map<String, Object> paramMap = resolveParam(method, args);
+        System.out.println("paramMap: \n" + paramMap);
+        return null;
+    }
+
+    private Map<String, Object> resolveParam(Method method, Object[] args) {
+        Parameter[] parameterArr = method.getParameters();
+        Map<String, Object> paramMap = new HashMap<>();
+        for (int i = 0; i < parameterArr.length; i++) {
+            Parameter parameter = parameterArr[i];
+            Param param = parameter.getAnnotation(Param.class);
+            if (Objects.nonNull(param)) {
+                // 那就是单个的对象，例如基本类型和String
+                paramMap.put(param.value(), args[i]);
+            } else {
+                // 那就是 POJO 对象
+                try {
+                    Class<?> type = parameter.getType();
+                    for (Method pojoMethod : type.getMethods()) {
+                        if (pojoMethod.getName().startsWith("get") && ! "getClass".equals(pojoMethod.getName())) {
+                            String propertyName = resolvePropertyName(pojoMethod);
+                            paramMap.put(propertyName, pojoMethod.invoke(args[i]));
+                        }
+                    }
+                } catch (InvocationTargetException | IllegalAccessException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        }
+        return paramMap;
+    }
+
+    private String resolvePropertyName(Method pojoMethod) {
+        String propertyName = pojoMethod.getName().substring(3);
+        char[] charArray = propertyName.toCharArray();
+        charArray[0] += 32;
+        return new String(charArray);
+    }
+
+    private String[] resolveSqlParam(String originalSql) {
+        char[] sqlCharArray = originalSql.toCharArray();
+        StringBuilder prepareStatementAppender = new StringBuilder();
+        StringBuilder propertyValueAppender = new StringBuilder();
+        List<String> paramList = new ArrayList<>();
+
+        for (int i = 0; i < sqlCharArray.length - 3; i++) {
+            if (sqlCharArray[i] == '#' && sqlCharArray[i + 1] == '{') {
+                // 找到占位符了
+                // VALUES (#{id},
+                //         i
+                int j = i + 2;
+                for (; j < sqlCharArray.length; j++) {
+                    if (sqlCharArray[j] == '}') {
+                        break;
+                    } else {
+                        propertyValueAppender.append(sqlCharArray[j]);
+                    }
+                }
+
+                paramList.add(propertyValueAppender.toString());
+                propertyValueAppender.delete(0, propertyValueAppender.length());
+                prepareStatementAppender.append("?");
+
+                i = j + 1;
+            } else {
+                prepareStatementAppender.append(sqlCharArray[i]);
+            }
+        }
+        String prepareSql = prepareStatementAppender.toString();
+        try {
+            preparedStatement = connection.prepareStatement(prepareSql);
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+        return paramList.toArray(new String[0]);
+    }
+}
+
+```
+
+参数解析类测试类：
+
+```java
+    @Test
+    public void testResolveParam() {
+        Configuration configuration = ConfigurationBuilder.build("dmybatis-config.xml");
+        SqlSessionFactory factory = new SqlSessionFactory(configuration);
+        SqlSession sqlSession = factory.openSession();
+        UserDao userDao = sqlSession.getDao(UserDao.class);
+
+        System.out.println(userDao.insert(new User("1", "123", "123", LocalDateTime.now(), LocalDateTime.now(), 0)));
+    }
+```
+
+```text
+SQL: 
+INSERT INTO `user` (`id`, `username`, `password`, `create_date_time`, `update_date_time`, `deleted`) VALUES (#{id}, #{username}, #{password}, #{create_date_time}, #{update_date_time}, #{deleted});
+paramMap: 
+{password=123, deleted=0, id=1, updateDateTime=2023-07-22T18:58:49.343, username=123, createDateTime=2023-07-22T18:58:49.343}
+null
+```
+
+现在已经可以获取到方法参数了。
+
+### 3.4.3 注入方法参数到 SQL 中
+
+有了前两节的铺垫，终于可以把方法参数成功的注入到 SQL 中了，代码实现如下：
+
+```java
+    // PreparedStatementBuilder.java
+    public PreparedStatement build() {
+        String[] sqlParamNameArr = resolveSqlParam(originalSql);
+        // SQL 解析完了，现在应该解析参数了
+        Map<String, Object> paramMap = resolveParam(method, args);
+        System.out.println("paramMap: \n" + paramMap);
+
+        try {
+            for (int i = 0; i < sqlParamNameArr.length; i++) {
+                preparedStatement.setObject(i, paramMap.get(sqlParamNameArr[i]));
+            }
+            return preparedStatement;
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+```
+
+但是问题来了，方法参数注入完了，需要真正的执行 SQL 了，PreparedStatement 有两个提交 SQL 的方法，一个是 executeUpdate() 一个是 executeQuery() ，我怎么知道当前 SQL 是哪一种呢？
+
+所以，我们在读取 SQL 的时候不能只读取 SQL 字符串，还需要保存其他的参数，下面修改如下：
+
