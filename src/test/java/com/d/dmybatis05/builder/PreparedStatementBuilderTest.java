@@ -4,6 +4,9 @@ import com.d.dmybatis05.UserDao;
 import com.d.dmybatis05.config.Configuration;
 import com.d.dmybatis05.config.ConfigurationBuilder;
 import com.d.dmybatis05.proxy.DaoProxy;
+import com.d.dmybatis05.session.SqlSession;
+import com.d.dmybatis05.session.SqlSessionFactory;
+import org.junit.Test;
 
 import java.lang.reflect.Proxy;
 
@@ -17,14 +20,13 @@ import java.lang.reflect.Proxy;
 
 public class PreparedStatementBuilderTest {
 
+    @Test
     public void testSqlPrepare() {
         Configuration configuration = ConfigurationBuilder.build("dmybatis-config.xml");
+        SqlSessionFactory factory = new SqlSessionFactory(configuration);
+        SqlSession sqlSession = factory.openSession();
+        UserDao userDao = sqlSession.getDao(UserDao.class);
 
-        Object instance = Proxy.newProxyInstance(DaoProxy.class.getClassLoader(),
-                new Class[]{UserDao.class},
-                new DaoProxy(configuration));
-
-        UserDao userDao = (UserDao) instance;
         System.out.println(userDao.selectAll());
     }
 

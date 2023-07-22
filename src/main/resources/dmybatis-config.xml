@@ -3,7 +3,7 @@
     <!-- 数据库连接信息 -->
     <connection>
         <url>
-            jdbc:mysql:localhost:3306/dmybatis05
+            jdbc:mysql://localhost:1103/dmybatis05
         </url>
         <driver>
             com.mysql.cj.jdbc.Driver
